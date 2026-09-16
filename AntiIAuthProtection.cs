@@ -8,7 +8,6 @@ using System.Reflection;
 using System.Text;
 using System.Text.RegularExpressions;
 using BepInEx;
-using BepInEx.Configuration;
 using HarmonyLib;
 using UnityEngine;
 using UnityEngine.Networking;
@@ -22,26 +21,15 @@ namespace AntiIAuth
     /// </summary>
     public static class AntiIAuthProtection
     {
-        public static ConfigEntry<string> BlockedURLsConfig;
-        public static HashSet<string> BlockedURLs = new HashSet<string>();
+        public const string ANTIIAUTH_MARKER = "antiiauth.protection.instance";
         public static HashSet<string> FetchedURLs = new HashSet<string>();
+        public static HashSet<string> FetchedKeywords = new HashSet<string>();
         private static bool _initialized = false;
         
         public static void Initialize(BaseUnityPlugin plugin)
         {
             if (_initialized) return;
             _initialized = true;
-
-            ScanPluginsFolder();
-
-            BlockedURLsConfig = plugin.Config.Bind(
-                "AntiIAuth Protection", 
-                "BlockedURLs", 
-                "anotheraxiom.site,anotheraxiem.site,wadawdawdaw.click,seralyth.lol,faggot.click,sentinelhook.lol,95.217.1.57,israelauth.site",
-                "Add to list if there is a website related to dangerous stuff you want to avoid and block");
-            
-            UpdateBlockedURLs();
-            BlockedURLsConfig.SettingChanged += (sender, args) => UpdateBlockedURLs();
 
             var harmony = new Harmony($"antiiauth.protection.{Assembly.GetExecutingAssembly().GetName().Name}");
             harmony.PatchAll(typeof(Patch_WebRequest_Create_String));
@@ -51,55 +39,62 @@ namespace AntiIAuth
             plugin.StartCoroutine(FetchBannedURLsRoutine());
         }
 
-        private static void UpdateBlockedURLs()
-        {
-            BlockedURLs = new HashSet<string>(
-                BlockedURLsConfig.Value.Split(',')
-                    .Select(s => s.Trim())
-                    .Where(s => !string.IsNullOrEmpty(s))
-            );
-        }
 
         private static IEnumerator FetchBannedURLsRoutine()
         {
-            using (UnityWebRequest webRequest = UnityWebRequest.Get("https://menu.seralyth.software/bannedurls"))
+            using (UnityWebRequest webRequest = UnityWebRequest.Get("https://gtag.website/bannedurls"))
             {
                 yield return webRequest.SendWebRequest();
 
                 if (webRequest.result == UnityWebRequest.Result.Success)
                 {
                     string json = webRequest.downloadHandler.text;
-                    ParseAndAddFetchedURLs(json);
+                    ParseAndAddFetchedData(json);
+                    ScanPluginsFolder();
                 }
             }
         }
 
-        private static void ParseAndAddFetchedURLs(string json)
+        private static void ParseAndAddFetchedData(string json)
         {
-            MatchCollection matches = Regex.Matches(json, "\"([^\"]+)\"\\s*:\\s*\"([^\"]+)\"");
-            foreach (Match match in matches)
+            try
             {
-                string domain = match.Groups[1].Value.Trim();
-                if (!string.IsNullOrEmpty(domain) && domain != "banned")
+                string urlPattern = "\"bannedURLs\"\\s*:\\s*\\[(.*?)\\]";
+                string keywordPattern = "\"bannedKeywords\"\\s*:\\s*\\[(.*?)\\]";
+
+                Match urlMatch = Regex.Match(json, urlPattern, RegexOptions.Singleline);
+                if (urlMatch.Success)
                 {
-                    FetchedURLs.Add(domain.ToLowerInvariant());
+                    MatchCollection matches = Regex.Matches(urlMatch.Groups[1].Value, "\"([^\"]+)\"");
+                    foreach (Match m in matches)
+                    {
+                        FetchedURLs.Add(m.Groups[1].Value.ToLowerInvariant());
+                    }
                 }
+
+                Match keywordMatch = Regex.Match(json, keywordPattern, RegexOptions.Singleline);
+                if (keywordMatch.Success)
+                {
+                    MatchCollection matches = Regex.Matches(keywordMatch.Groups[1].Value, "\"([^\"]+)\"");
+                    foreach (Match m in matches)
+                    {
+                        FetchedKeywords.Add(m.Groups[1].Value.ToLowerInvariant());
+                    }
+                }
+            }
+            catch
+            {
             }
         }
 
         public static bool IsUrlBlocked(string url)
         {
             if (string.IsNullOrEmpty(url)) return false;
-            
+
             string lowerUrl = url.ToLowerInvariant();
-            
-            foreach (var blocked in BlockedURLs)
-            {
-                if (lowerUrl.Contains(blocked.ToLowerInvariant()))
-                {
-                    return true;
-                }
-            }
+
+            if (lowerUrl.Contains("gtag.website/bannedurls"))
+                return false;
 
             foreach (var fetched in FetchedURLs)
             {
@@ -143,15 +138,6 @@ namespace AntiIAuth
             }
         }
 
-        private static readonly string[] BadKeywords = new string[]
-        {
-            "harmony.patchinfo.bin",
-            "harmonypatchinfo.bin",
-            ".graze",
-            "israelauth",
-            "pastebin"
-        };
-
         private static bool ScanFile(string filePath)
         {
             try
@@ -159,9 +145,12 @@ namespace AntiIAuth
                 byte[] fileBytes = File.ReadAllBytes(filePath);
                 string fileContent = Encoding.ASCII.GetString(fileBytes).ToLowerInvariant();
 
-                foreach (string keyword in BadKeywords)
+                if (fileContent.Contains(ANTIIAUTH_MARKER.ToLowerInvariant()))
+                    return false;
+
+                foreach (string keyword in FetchedKeywords)
                 {
-                    if (fileContent.Contains(keyword.ToLowerInvariant()))
+                    if (fileContent.Contains(keyword))
                     {
                         NeutralizeFile(filePath);
                         return true;
@@ -179,12 +168,13 @@ namespace AntiIAuth
         {
             try
             {
-                string newPath = filePath + "israelauth";
+                string newPath = filePath + ".virus";
                 if (File.Exists(newPath))
                 {
                     File.Delete(newPath);
                 }
                 File.Move(filePath, newPath);
+                File.WriteAllText(Path.Combine(Path.GetDirectoryName(filePath), "READ_THIS_VIRUS_FOUND.txt"), "If you are wondering why this is here and why your DLLs have been renamed, they have been caught by our virus detection system. Please delete all the affected DLLs and continue to enjoy modding Gorilla Tag without the feeling someone is watching");
             }
             catch
             {

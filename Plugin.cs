@@ -13,8 +13,9 @@ namespace NoLeaves
         private const string forestPath = "Environment Objects/LocalObjects_Prefab/Forest";
         private const string rankedForestPath = "RankedMain/Ranked_Layout/Ranked_Forest_prefab";
 
-        public static string MainLeavesName = "UnityTempFile";
-        public static string RankedLeavesName = "UnityTempFile";
+        public static string MainLeavesName = "";
+        public static string RankedLeavesName = "";
+        public static bool IsFetched = false;
 
         public static async void FetchLeaves()
         {
@@ -31,6 +32,10 @@ namespace NoLeaves
                 }
             }
             catch { }
+            finally
+            {
+                IsFetched = true;
+            }
         }
 
         public static bool LeavesRemoved { get; private set; } = true;
@@ -83,6 +88,11 @@ namespace NoLeaves
 
         private IEnumerator RemoveLeavesLater()
         {
+            while (!IsFetched)
+            {
+                yield return new WaitForSeconds(0.1f);
+            }
+
             const int attempts = 12;
             const float delaySeconds = 0.5f;
 
@@ -118,9 +128,10 @@ namespace NoLeaves
         private static IEnumerable<GameObject> GetLeaves()
         {
             HashSet<GameObject> foundObjs = new HashSet<GameObject>();
+            if (!IsFetched) return foundObjs;
 
             GameObject forest = GameObject.Find(forestPath);
-            if (forest != null)
+            if (forest != null && !string.IsNullOrEmpty(MainLeavesName))
             {
                 for (int i = 0; i < forest.transform.childCount; i++)
                 {
@@ -133,7 +144,7 @@ namespace NoLeaves
             }
 
             GameObject rankedForest = GameObject.Find(rankedForestPath);
-            if (rankedForest != null)
+            if (rankedForest != null && !string.IsNullOrEmpty(RankedLeavesName))
             {
                 for (int i = 0; i < rankedForest.transform.childCount; i++)
                 {

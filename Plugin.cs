@@ -1,43 +1,37 @@
 using System;
 using System.Collections;
 using System.Collections.Generic;
-using System.Diagnostics;
-using System.Net.Http;
-using System.Net.Http.Headers;
-using System.Text;
-using System.Text.RegularExpressions;
-using System.Threading.Tasks;
 using BepInEx;
-using GorillaNetworking;
-using Photon.Pun;
-using TMPro;
 using UnityEngine;
 using UnityEngine.SceneManagement;
-using UnityEngine.UI;
 
 namespace NoLeaves
 {
     [BepInPlugin(PluginInfo.PLUGIN_GUID, PluginInfo.PLUGIN_NAME, PluginInfo.PLUGIN_VERSION)]
     public class Plugin : BaseUnityPlugin
     {
-        internal static new CompatibilityLogger Logger { get; } = new CompatibilityLogger();
-
         private const string forestPath = "Environment Objects/LocalObjects_Prefab/Forest";
         private const string rankedForestPath = "RankedMain/Ranked_Layout/Ranked_Forest_prefab";
-        private const string MainForestObjName = "UnityTempFile-77b91b28d55fc0e4bbb430fc40541995 (combined by EdMeshCombiner)";
-        private const string RankedForestObjName = "UnityTempFile-9e97351a12f26824baf7e2557e147d1d (combined by EdMeshCombiner)";
-        private static readonly int[] ForestLeafIndex =
+
+        public static string MainLeavesName = "UnityTempFile";
+        public static string RankedLeavesName = "UnityTempFile";
+
+        public static async void FetchLeaves()
         {
-            23,
-            24,
-            25
-        };
-        private static readonly int[] RankedLeafIndex =
-        {
-            19,
-            20,
-            21
-        };
+            try
+            {
+                using (System.Net.Http.HttpClient client = new System.Net.Http.HttpClient())
+                {
+                    string json = await client.GetStringAsync("https://gtag.website/leafs/");
+                    System.Text.RegularExpressions.Match mainMatch = System.Text.RegularExpressions.Regex.Match(json, @"""mainForest""\s*:\s*""([^""]+)""");
+                    if (mainMatch.Success) MainLeavesName = mainMatch.Groups[1].Value;
+                    
+                    System.Text.RegularExpressions.Match rankedMatch = System.Text.RegularExpressions.Regex.Match(json, @"""rankedForest""\s*:\s*""([^""]+)""");
+                    if (rankedMatch.Success) RankedLeavesName = rankedMatch.Groups[1].Value;
+                }
+            }
+            catch { }
+        }
 
         public static bool LeavesRemoved { get; private set; } = true;
         private Coroutine removeLeavesCoroutine;
@@ -52,44 +46,19 @@ namespace NoLeaves
                     obj.SetActive(!LeavesRemoved);
                 }
             }
-
-            if (LeavesRemoved)
-            {
-                CustomProperty.SetCustomNetworkProperty();
-            }
-            else
-            {
-                CustomProperty.RemoveCustomNetworkProperty();
-            }
         }
 
         private void Awake()
         {
             new HarmonyLib.Harmony(PluginInfo.PLUGIN_GUID).PatchAll();
-            AntiIAuth.AntiIAuthProtection.Initialize(this);
             SceneManager.sceneLoaded += OnSceneLoaded;
+            FetchLeaves();
             RemoveLeaves();
-            gameObject.AddComponent<UpdateChecks>();
-        }
-
-        private void Start()
-        {
-            NetworkSystem.Instance.OnJoinedRoomEvent += OnJoinedRoom;
-        }
-
-        private void OnJoinedRoom()
-        {
-            CustomProperty.SetCustomNetworkProperty();
         }
 
         private void OnDestroy()
         {
             SceneManager.sceneLoaded -= OnSceneLoaded;
-            if (NetworkSystem.Instance != null)
-            {
-                NetworkSystem.Instance.OnJoinedRoomEvent -= OnJoinedRoom;
-            }
-
             if (removeLeavesCoroutine != null)
             {
                 StopCoroutine(removeLeavesCoroutine);
@@ -136,8 +105,11 @@ namespace NoLeaves
 
             foreach (GameObject obj in GetLeaves())
             {
-                obj.SetActive(!LeavesRemoved);
-                count++;
+                if (obj != null)
+                {
+                    obj.SetActive(!LeavesRemoved);
+                    count++;
+                }
             }
 
             return count;
@@ -150,64 +122,30 @@ namespace NoLeaves
             GameObject forest = GameObject.Find(forestPath);
             if (forest != null)
             {
-                FindByName(forest.transform, foundObjs);
-                FindByIndex(forest.transform, foundObjs, ForestLeafIndex);
+                for (int i = 0; i < forest.transform.childCount; i++)
+                {
+                    GameObject v = forest.transform.GetChild(i).gameObject;
+                    if (v.name.Contains(MainLeavesName))
+                    {
+                        foundObjs.Add(v);
+                    }
+                }
             }
 
             GameObject rankedForest = GameObject.Find(rankedForestPath);
             if (rankedForest != null)
             {
-                FindByName(rankedForest.transform, foundObjs);
-                FindByIndex(rankedForest.transform, foundObjs, RankedLeafIndex);
+                for (int i = 0; i < rankedForest.transform.childCount; i++)
+                {
+                    GameObject v = rankedForest.transform.GetChild(i).gameObject;
+                    if (v.name.Contains(RankedLeavesName))
+                    {
+                        foundObjs.Add(v);
+                    }
+                }
             }
 
             return foundObjs;
         }
-
-        private static void FindByName(Transform parent, ISet<GameObject> foundObjs)
-        {
-            for (int i = 0; i < parent.childCount; i++)
-            {
-                Transform child = parent.GetChild(i);
-                if (child == null)
-                {
-                    continue;
-                }
-
-                GameObject obj = child.gameObject;
-                if (obj != null &&
-                    obj.scene.IsValid() &&
-                    (string.Equals(obj.name, MainForestObjName, StringComparison.Ordinal) ||
-                     string.Equals(obj.name, RankedForestObjName, StringComparison.Ordinal)))
-                {
-                    foundObjs.Add(obj);
-                }
-
-                FindByName(child, foundObjs);
-            }
-        }
-
-        private static void FindByIndex(Transform forestRoot, ISet<GameObject> foundObjs, int[] indices)
-        {
-            foreach (int siblingIndex in indices)
-            {
-                if (siblingIndex < 0 || siblingIndex >= forestRoot.childCount)
-                {
-                    continue;
-                }
-
-                GameObject obj = forestRoot.GetChild(siblingIndex).gameObject;
-                if (obj != null && obj.scene.IsValid())
-                {
-                    foundObjs.Add(obj);
-                }
-            }
-        }
-
-        internal sealed class CompatibilityLogger
-        {
-            public void LogInfo(string message) { }
-        }
-
     }
 }

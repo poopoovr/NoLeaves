@@ -53,8 +53,60 @@ namespace NoLeaves
             }
         }
 
+        public static void StreamerRemoveLeaves()
+        {
+            foreach (GameObject v in GetLeaves())
+            {
+                if (v != null)
+                {
+
+                    v.SetActive(true);
+                    v.layer = 21; 
+                }
+            }
+        }
+
+        public static void DisableStreamerRemoveLeaves()
+        {
+            foreach (GameObject v in GetLeaves())
+            {
+                if (v != null)
+                {
+                    v.layer = 0;
+                    v.SetActive(!LeavesRemoved);
+                }
+            }
+        }
+
+        public static bool StreamerModeActive = false;
+
+        private void Update()
+        {
+            if (UnityEngine.InputSystem.Keyboard.current != null)
+            {
+                if (UnityEngine.InputSystem.Keyboard.current.f5Key.wasPressedThisFrame)
+                {
+                    Toggle();
+                }
+
+                if (UnityEngine.InputSystem.Keyboard.current.f6Key.wasPressedThisFrame)
+                {
+                    StreamerModeActive = !StreamerModeActive;
+                    if (StreamerModeActive)
+                    {
+                        StreamerRemoveLeaves();
+                    }
+                    else
+                    {
+                        DisableStreamerRemoveLeaves();
+                    }
+                }
+            }
+        }
+
         private void Awake()
         {
+            StartupLog.PrintThePoop(Logger);
             new HarmonyLib.Harmony(PluginInfo.PLUGIN_GUID).PatchAll();
             SceneManager.sceneLoaded += OnSceneLoaded;
             FetchLeaves();

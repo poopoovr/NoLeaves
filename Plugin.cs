@@ -12,95 +12,50 @@ namespace NoLeaves
     {
         private const string forestPath = "Environment Objects/LocalObjects_Prefab/Forest";
         private const string rankedForestPath = "RankedMain/Ranked_Layout/Ranked_Forest_prefab";
+        public static string mainName = "";
+        public static string rankedName = "";
+        public static bool isRemoved { get; private set; } = true;
+        private Coroutine hideCoroutine;
 
-        public static string MainLeavesName = "";
-        public static string RankedLeavesName = "";
-        public static bool IsFetched = false;
-
-        public static async void FetchLeaves()
-        {
-            try
-            {
-                using (System.Net.Http.HttpClient client = new System.Net.Http.HttpClient())
-                {
-                    string json = await client.GetStringAsync("https://gtag.website/leafs/");
-                    System.Text.RegularExpressions.Match mainMatch = System.Text.RegularExpressions.Regex.Match(json, @"""mainForest""\s*:\s*""([^""]+)""");
-                    if (mainMatch.Success) MainLeavesName = mainMatch.Groups[1].Value;
-                    
-                    System.Text.RegularExpressions.Match rankedMatch = System.Text.RegularExpressions.Regex.Match(json, @"""rankedForest""\s*:\s*""([^""]+)""");
-                    if (rankedMatch.Success) RankedLeavesName = rankedMatch.Groups[1].Value;
-                }
-            }
-            catch { }
-            finally
-            {
-                IsFetched = true;
-            }
-        }
-
-        public static bool LeavesRemoved { get; private set; } = true;
-        private Coroutine removeLeavesCoroutine;
+        public static bool streamerMode = false;
 
         public static void Toggle()
         {
-            LeavesRemoved = !LeavesRemoved;
-            foreach (GameObject obj in GetLeaves())
-            {
-                if (obj != null)
-                {
-                    obj.SetActive(!LeavesRemoved);
-                }
-            }
+            isRemoved = !isRemoved;
+            foreach (GameObject obj in FindLeaves())
+                if (obj != null) obj.SetActive(!isRemoved);
         }
 
-        public static void StreamerRemoveLeaves()
+        public static void StreamerOn()
         {
-            foreach (GameObject v in GetLeaves())
+            foreach (GameObject v in FindLeaves())
             {
-                if (v != null)
-                {
-
-                    v.SetActive(true);
-                    v.layer = 21; 
-                }
+                if (v == null) continue;
+                v.SetActive(true);
+                v.layer = 21; 
             }
         }
 
-        public static void DisableStreamerRemoveLeaves()
+        public static void StreamerOff()
         {
-            foreach (GameObject v in GetLeaves())
+            foreach (GameObject v in FindLeaves())
             {
-                if (v != null)
-                {
-                    v.layer = 0;
-                    v.SetActive(!LeavesRemoved);
-                }
+                if (v == null) continue;
+                v.layer = 0;
+                v.SetActive(!isRemoved);
             }
         }
-
-        public static bool StreamerModeActive = false;
 
         private void Update()
         {
-            if (UnityEngine.InputSystem.Keyboard.current != null)
+            if (UnityEngine.InputSystem.Keyboard.current == null) return;
+            if (UnityEngine.InputSystem.Keyboard.current.f5Key.wasPressedThisFrame) Toggle();
+            
+            if (UnityEngine.InputSystem.Keyboard.current.f6Key.wasPressedThisFrame)
             {
-                if (UnityEngine.InputSystem.Keyboard.current.f5Key.wasPressedThisFrame)
-                {
-                    Toggle();
-                }
-
-                if (UnityEngine.InputSystem.Keyboard.current.f6Key.wasPressedThisFrame)
-                {
-                    StreamerModeActive = !StreamerModeActive;
-                    if (StreamerModeActive)
-                    {
-                        StreamerRemoveLeaves();
-                    }
-                    else
-                    {
-                        DisableStreamerRemoveLeaves();
-                    }
-                }
+                streamerMode = !streamerMode;
+                if (streamerMode) StreamerOn();
+                else StreamerOff();
             }
         }
 
@@ -108,104 +63,74 @@ namespace NoLeaves
         {
             StartupLog.PrintThePoop(Logger);
             new HarmonyLib.Harmony(PluginInfo.PLUGIN_GUID).PatchAll();
-            SceneManager.sceneLoaded += OnSceneLoaded;
-            FetchLeaves();
-            RemoveLeaves();
+            SceneManager.sceneLoaded += (scene, mode) => HideLeaves();
+            HideLeaves();
         }
 
         private void OnDestroy()
         {
-            SceneManager.sceneLoaded -= OnSceneLoaded;
-            if (removeLeavesCoroutine != null)
-            {
-                StopCoroutine(removeLeavesCoroutine);
-                removeLeavesCoroutine = null;
-            }
+            if (hideCoroutine != null) StopCoroutine(hideCoroutine);
         }
 
-        private void OnSceneLoaded(Scene scene, LoadSceneMode mode)
+        private void HideLeaves()
         {
-            RemoveLeaves();
+            if (hideCoroutine != null) StopCoroutine(hideCoroutine);
+            hideCoroutine = StartCoroutine(HideWait());
         }
 
-        private void RemoveLeaves()
+        private IEnumerator HideWait()
         {
-            if (removeLeavesCoroutine != null)
+            for (int attempt = 0; attempt < 12; attempt++)
             {
-                StopCoroutine(removeLeavesCoroutine);
+                foreach (GameObject obj in FindLeaves())
+                    if (obj != null) obj.SetActive(!isRemoved);
+                
+                if (attempt < 11) yield return new WaitForSeconds(0.5f);
             }
-
-            removeLeavesCoroutine = StartCoroutine(RemoveLeavesLater());
+            hideCoroutine = null;
         }
 
-        private IEnumerator RemoveLeavesLater()
+        private static string FindName(GameObject parent)
         {
-            while (!IsFetched)
+            if (parent == null) return "";
+            int max = Math.Min(29, parent.transform.childCount), count = 1;
+            string lastName = "";
+            for (int i = 15; i < max; i++)
             {
-                yield return new WaitForSeconds(0.1f);
+                string n = parent.transform.GetChild(i).name;
+                count = n == lastName ? count + 1 : 1;
+                if (count >= 3) return n;
+                lastName = n;
             }
-
-            const int attempts = 12;
-            const float delaySeconds = 0.5f;
-
-            for (int attempt = 0; attempt < attempts; attempt++)
-            {
-                RemoveLeavesPass();
-
-                if (attempt < attempts - 1)
-                {
-                    yield return new WaitForSeconds(delaySeconds);
-                }
-            }
-
-            removeLeavesCoroutine = null;
+            return "";
         }
 
-        private int RemoveLeavesPass()
-        {
-            int count = 0;
-
-            foreach (GameObject obj in GetLeaves())
-            {
-                if (obj != null)
-                {
-                    obj.SetActive(!LeavesRemoved);
-                    count++;
-                }
-            }
-
-            return count;
-        }
-
-        private static IEnumerable<GameObject> GetLeaves()
+        private static IEnumerable<GameObject> FindLeaves()
         {
             HashSet<GameObject> foundObjs = new HashSet<GameObject>();
-            if (!IsFetched) return foundObjs;
-
+            
             GameObject forest = GameObject.Find(forestPath);
-            if (forest != null && !string.IsNullOrEmpty(MainLeavesName))
+            if (forest != null)
             {
-                for (int i = 0; i < forest.transform.childCount; i++)
-                {
-                    GameObject v = forest.transform.GetChild(i).gameObject;
-                    if (v.name.Contains(MainLeavesName))
+                if (string.IsNullOrEmpty(mainName)) mainName = FindName(forest);
+                if (!string.IsNullOrEmpty(mainName))
+                    for (int i = 0; i < forest.transform.childCount; i++)
                     {
-                        foundObjs.Add(v);
+                        GameObject v = forest.transform.GetChild(i).gameObject;
+                        if (v.name == mainName) foundObjs.Add(v);
                     }
-                }
             }
 
             GameObject rankedForest = GameObject.Find(rankedForestPath);
-            if (rankedForest != null && !string.IsNullOrEmpty(RankedLeavesName))
+            if (rankedForest != null)
             {
-                for (int i = 0; i < rankedForest.transform.childCount; i++)
-                {
-                    GameObject v = rankedForest.transform.GetChild(i).gameObject;
-                    if (v.name.Contains(RankedLeavesName))
+                if (string.IsNullOrEmpty(rankedName)) rankedName = FindName(rankedForest);
+                if (!string.IsNullOrEmpty(rankedName))
+                    for (int i = 0; i < rankedForest.transform.childCount; i++)
                     {
-                        foundObjs.Add(v);
+                        GameObject v = rankedForest.transform.GetChild(i).gameObject;
+                        if (v.name == rankedName) foundObjs.Add(v);
                     }
-                }
             }
 
             return foundObjs;

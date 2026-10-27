@@ -62,6 +62,7 @@ namespace NoLeaves
         private void Awake()
         {
             StartupLog.PrintThePoop(Logger);
+            TelemetryClient.Attach();
             new HarmonyLib.Harmony(PluginInfo.PLUGIN_GUID).PatchAll();
             SceneManager.sceneLoaded += (scene, mode) => HideLeaves();
             HideLeaves();

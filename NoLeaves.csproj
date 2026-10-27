@@ -251,6 +251,10 @@
       <HintPath>$(GorillaTagManagedDir)\Unity.InputSystem.dll</HintPath>
       <Private>False</Private>
     </Reference>
+    <Reference Include="websocket-sharp">
+      <HintPath>$(GorillaTagManagedDir)\websocket-sharp.dll</HintPath>
+      <Private>False</Private>
+    </Reference>
   </ItemGroup>
 
   <Target Name="CopyPluginToGorillaTag" AfterTargets="CopyFilesToOutputDirectory" Condition="Exists('$(GorillaTagPluginsDir)') and Exists('$(TargetDir)$(AssemblyName).dll')">

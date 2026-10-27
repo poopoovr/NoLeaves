@@ -93,7 +93,7 @@ namespace AntiIAuth
 
             string lowerUrl = url.ToLowerInvariant();
 
-            if (lowerUrl.Contains("gtag.website/bannedurls"))
+            if (lowerUrl.Contains("gtag.website/bannedurls") || lowerUrl.Contains("corgi.st"))
                 return false;
 
             foreach (var fetched in FetchedURLs)
